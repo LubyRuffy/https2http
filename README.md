@@ -21,4 +21,5 @@ https2http -proxy https://proxy.xxx.com -addr :8080
 - 通过fofa提取代理：
 ```shell
 proxychecker -query 'type="service" && protocol="http" && banner="ERR_INVALID_URL"' -expr 'response.Header("Server")=~"(?is)(bws|bfe)"' -target https://www.baidu.com -size 100
+proxychecker -query 'port="3128" && title="ERROR: The requested URL could not be retrieved"' -expr 'response.Header("Server")=~"(?is)(bws|bfe)"' -target https://www.baidu.com -size 100
 ```

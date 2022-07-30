@@ -27,6 +27,7 @@ import (
 	"github.com/PaesslerAG/gval"
 	"github.com/gammazero/workerpool"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -49,8 +50,11 @@ func NewResponsePackage(resp *http.Response) *ResponsePackage {
 	}
 }
 
-func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration) (bool, error) {
+func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, debug bool) (bool, error) {
 	host = FixURL(host)
+	if debug {
+		log.Println("checking ", host)
+	}
 
 	proxyURL, err := url.Parse(host)
 	if err != nil {
@@ -146,6 +150,7 @@ func main() {
 	timeout := flag.Int("timeout", 10, `timeout for request`)
 	workers := flag.Int("workers", 20, `workers to run`)
 	size := flag.Int("size", 1000, `workers to run`)
+	debug := flag.Bool("debug", false, `workers to run`)
 	flag.Parse()
 
 	timeOutDuration := time.Second * time.Duration(*timeout)
@@ -157,7 +162,7 @@ func main() {
 		var ok bool
 		var err error
 
-		ok, err = isProxyHTTP(*method, host, *checkTarget, *expr, timeOutDuration)
+		ok, err = isProxyHTTP(*method, host, *checkTarget, *expr, timeOutDuration, *debug)
 
 		if err == nil && ok {
 			fmt.Println("\nsuccessful proxy:", host)
