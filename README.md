@@ -23,3 +23,9 @@ https2http -proxy https://proxy.xxx.com -addr :8080
 proxychecker -query 'type="service" && protocol="http" && banner="ERR_INVALID_URL"' -expr 'response.Header("Server")=~"(?is)(bws|bfe)"' -target https://www.baidu.com -size 100
 proxychecker -query 'port="3128" && title="ERROR: The requested URL could not be retrieved"' -expr 'response.Header("Server")=~"(?is)(bws|bfe)"' -target https://www.baidu.com -size 100
 ```
+
+http代理测试，这种规则基本都在中国的代理：[port="9091" && banner="403 Forbidden" && banner="nginx/1.12.1"](https://fofa.info/result?qbase64=cG9ydD05MDkxICYmIGJhbm5lcj0iNDAzIEZvcmJpZGRlbiIgJiYgYmFubmVyPSJuZ2lueC8xLjEyLjEi)
+
+```shell
+proxychecker -query 'port=9091 && banner="403 Forbidden" && banner="nginx/1.12.1"' -expr 'response.Body()=~"(?is)百度一下"' -target http://www.baidu.com -size 1000
+```

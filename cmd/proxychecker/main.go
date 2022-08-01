@@ -44,6 +44,14 @@ func (rp ResponsePackage) Header(key string) string {
 	return rp.resp.Header.Get(key)
 }
 
+func (rp ResponsePackage) Body() string {
+	body, err := ioutil.ReadAll(rp.resp.Body)
+	if err != nil {
+		return ""
+	}
+	return string(body)
+}
+
 func NewResponsePackage(resp *http.Response) *ResponsePackage {
 	return &ResponsePackage{
 		resp: resp,
@@ -80,6 +88,7 @@ func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, deb
 	if err != nil {
 		return false, err
 	}
+	defer resp.Body.Close()
 
 	//log.Printf("%s: %s\n", host, resp.Header.Get("Server"))
 
@@ -88,7 +97,6 @@ func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, deb
 			"response": NewResponsePackage(resp),
 		},
 		gval.Function("body", func(arguments ...interface{}) (interface{}, error) {
-			defer resp.Body.Close()
 			body, err := ioutil.ReadAll(resp.Body)
 			return string(body), err
 		}))
