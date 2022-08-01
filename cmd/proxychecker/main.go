@@ -59,7 +59,6 @@ func NewResponsePackage(resp *http.Response) *ResponsePackage {
 }
 
 func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, debug bool) (bool, error) {
-	host = FixURL(host)
 	if debug {
 		log.Println("checking ", host)
 	}
@@ -108,9 +107,12 @@ func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, deb
 }
 
 // FixURL 补充完整url，主要用于ip:port变成url
-func FixURL(v string) string {
+func FixURL(v string, proxyType string) string {
 	if !strings.Contains(v, "://") {
 		host, port, _ := net.SplitHostPort(v)
+		if proxyType != "" && proxyType != "auto" {
+			return proxyType + "://" + v
+		}
 		switch port {
 		case "80":
 			v = "http://" + host
@@ -155,6 +157,7 @@ func main() {
 	checkTarget := flag.String("target", `https://www.google.com`, `target to visit`)
 	testProxy := flag.String("testProxy", ``, `testProxy only for test`)
 	method := flag.String("method", `GET`, `method to request`)
+	proxyType := flag.String("type", `auto`, `could be: socks5/http/https/auto`)
 	timeout := flag.Int("timeout", 10, `timeout for request`)
 	workers := flag.Int("workers", 20, `workers to run`)
 	size := flag.Int("size", 1000, `workers to run`)
@@ -170,6 +173,7 @@ func main() {
 		var ok bool
 		var err error
 
+		host = FixURL(host, *proxyType)
 		ok, err = isProxyHTTP(*method, host, *checkTarget, *expr, timeOutDuration, *debug)
 
 		if err == nil && ok {

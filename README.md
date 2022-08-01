@@ -25,7 +25,16 @@ proxychecker -query 'port="3128" && title="ERROR: The requested URL could not be
 ```
 
 http代理测试，这种规则基本都在中国的代理：[port="9091" && banner="403 Forbidden" && banner="nginx/1.12.1"](https://fofa.info/result?qbase64=cG9ydD05MDkxICYmIGJhbm5lcj0iNDAzIEZvcmJpZGRlbiIgJiYgYmFubmVyPSJuZ2lueC8xLjEyLjEi)
-
 ```shell
 proxychecker -query 'port=9091 && banner="403 Forbidden" && banner="nginx/1.12.1"' -expr 'response.Body()=~"(?is)百度一下"' -target http://www.baidu.com -size 1000
+```
+
+检查Mikrotik代理: [banner="Mikrotik HttpProxy"](https://fofa.info/result?qbase64=YmFubmVyPSJNaWtyb3RpayBIdHRwUHJveHki)
+```shell
+proxychecker -query 'banner="Mikrotik HttpProxy"' -expr 'response.Body()=~"(?is)百度一下"' -target http://www.baidu.com -size 1000
+```
+
+检查socks5代理: [banner="Authentication(0x00)"](https://fofa.info/result?qbase64=YmFubmVyPSJBdXRoZW50aWNhdGlvbigweDAwKSI%3D)
+```shell
+proxychecker -query 'banner="Authentication(0x00)"' -expr 'response.Body()=~"(?is)百度一下"' -target http://www.baidu.com -size 1000 -type socks5
 ```
