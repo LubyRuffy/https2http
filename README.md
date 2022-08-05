@@ -17,6 +17,14 @@ app <-> proxy(Proxifier) <-> https2http <-> https proxy
 https2http -proxy https://proxy.xxx.com -addr :8080
 ```
 
+直接用gost也可以：
+```shell
+git clone https://github.com/ginuerzh/gost.git
+cd gost/cmd/gost
+go build
+./gost.exe -L=:8080 -F=https://proxy.xxx.com
+```
+
 ## 辅助工具
 - 通过fofa提取代理：
 ```shell
