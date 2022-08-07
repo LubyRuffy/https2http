@@ -1,4 +1,4 @@
-module github.com/LubyRuffy/https2socks5
+module github.com/LubyRuffy/https2http
 
 go 1.18
 
