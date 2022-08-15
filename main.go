@@ -11,7 +11,7 @@ import (
 
 func main() {
 	upstreamProxy := flag.String("proxy", "", "upstream proxy")
-	addr := flag.String("addr", ":8080", "upstream proxy")
+	addr := flag.String("addr", ":8080", "local addr, as http proxy")
 	flag.Parse()
 
 	proxyURL, err := url.Parse(*upstreamProxy)
@@ -28,11 +28,11 @@ func main() {
 		Proxy:           http.ProxyURL(proxyURL),
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	proxy.ConnectDial = proxy.NewConnectDialToProxy(*upstreamProxy)
-	proxy.OnRequest().DoFunc(
-		func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-			return r, nil
-		})
+	//proxy.ConnectDial = proxy.NewConnectDialToProxy(*upstreamProxy)
+	//proxy.OnRequest().DoFunc(
+	//	func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+	//		return r, nil
+	//	})
 	proxy.Verbose = true
 	log.Fatal(http.ListenAndServe(*addr, proxy))
 }
