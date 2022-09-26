@@ -21,6 +21,7 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"github.com/LubyRuffy/gofofa"
@@ -38,6 +39,7 @@ import (
 
 type ResponsePackage struct {
 	resp *http.Response
+	body []byte
 }
 
 func (rp ResponsePackage) Header(key string) string {
@@ -45,16 +47,13 @@ func (rp ResponsePackage) Header(key string) string {
 }
 
 func (rp ResponsePackage) Body() string {
-	body, err := ioutil.ReadAll(rp.resp.Body)
-	if err != nil {
-		return ""
-	}
-	return string(body)
+	return string(rp.body)
 }
 
-func NewResponsePackage(resp *http.Response) *ResponsePackage {
+func NewResponsePackage(resp *http.Response, body []byte) *ResponsePackage {
 	return &ResponsePackage{
 		resp: resp,
+		body: body,
 	}
 }
 
@@ -88,15 +87,17 @@ func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, deb
 		return false, err
 	}
 	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
 
-	//log.Printf("%s: %s\n", host, resp.Header.Get("Server"))
+	if debug {
+		log.Printf("%s: %v\n%s\n", host, resp.Header, hex.Dump(body))
+	}
 
 	value, err := gval.Evaluate(expr,
 		map[string]interface{}{
-			"response": NewResponsePackage(resp),
+			"response": NewResponsePackage(resp, body),
 		},
 		gval.Function("body", func(arguments ...interface{}) (interface{}, error) {
-			body, err := ioutil.ReadAll(resp.Body)
 			return string(body), err
 		}))
 	if err != nil {

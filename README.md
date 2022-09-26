@@ -46,3 +46,12 @@ proxychecker -query 'banner="Mikrotik HttpProxy"' -expr 'response.Body()=~"(?is)
 ```shell
 proxychecker -query 'banner="Authentication(0x00)"' -expr 'response.Body()=~"(?is)百度一下"' -target http://www.baidu.com -size 1000 -type socks5
 ```
+
+检查socks5代理: [body="This is a proxy server. Does not respond to non-proxy requests."](https://fofa.info/result?qbase64=Ym9keT0iVGhpcyBpcyBhIHByb3h5IHNlcnZlci4gRG9lcyBub3QgcmVzcG9uZCB0byBub24tcHJveHkgcmVxdWVzdHMuIg%3D%3D)
+```shell
+# 应该是通用组件，在请求www.baidu.com的情况下会提示错误：dial tcp: address [2405:19c0:c303:423d:deef:db8e:1c8d:ecb0]:0: no suitable address found
+proxychecker -query 'body="This is a proxy server. Does not respond to non-proxy requests."' -expr 'response.Body()=~"(?is)百度一下"' -target http://www.baidu.com -size 1000 -type http
+
+proxychecker -query 'body="This is a proxy server. Does not respond to non-proxy requests."' -expr 'response.Body()=~"(?is)GeoNameID"' -target http://ip.bmh.im/h -size 1000 -type http
+```
+
