@@ -24,10 +24,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"github.com/LubyRuffy/gofofa"
-	"github.com/PaesslerAG/gval"
-	"github.com/gammazero/workerpool"
-	"io/ioutil"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -35,6 +32,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/LubyRuffy/gofofa"
+	"github.com/PaesslerAG/gval"
+	"github.com/gammazero/workerpool"
 )
 
 type ResponsePackage struct {
@@ -87,7 +88,7 @@ func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, deb
 		return false, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 
 	if debug {
 		log.Printf("%s: %v\n%s\n", host, resp.Header, hex.Dump(body))
