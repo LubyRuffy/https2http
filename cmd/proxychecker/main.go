@@ -22,6 +22,7 @@ package main
 import (
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -58,17 +59,14 @@ func NewResponsePackage(resp *http.Response, body []byte) *ResponsePackage {
 	}
 }
 
-func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, debug bool) (bool, error) {
-	if debug {
-		log.Println("checking ", host)
-	}
-
+// 创建带有代理设置的HTTP客户端
+func createHTTPClient(host string, timeout time.Duration) (*http.Client, error) {
 	proxyURL, err := url.Parse(host)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	httpClient := &http.Client{
+	return &http.Client{
 		Transport: &http.Transport{
 			Proxy:                 http.ProxyURL(proxyURL),
 			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
@@ -77,18 +75,74 @@ func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, deb
 			TLSHandshakeTimeout:   timeout,
 			ExpectContinueTimeout: timeout,
 		},
+	}, nil
+}
+
+// 发送HTTP请求并获取响应体
+func sendHTTPRequest(client *http.Client, method, url string) (*http.Response, []byte, error) {
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return nil, nil, err
 	}
-	req, err := http.NewRequest(method, checkUrl, nil)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return resp, body, nil
+}
+
+func getCountryCode(host string, timeout time.Duration) (string, error) {
+	client, err := createHTTPClient(host, timeout)
+	if err != nil {
+		return "", err
+	}
+
+	_, body, err := sendHTTPRequest(client, "GET", "https://api.my-ip.io/v2/ip.json")
+	if err != nil {
+		return "", err
+	}
+
+	// 解析JSON获取country.code
+	var ipInfo map[string]interface{}
+	if err := json.Unmarshal(body, &ipInfo); err != nil {
+		return "", err
+	}
+
+	country, ok := ipInfo["country"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("invalid country info")
+	}
+
+	countryCode, ok := country["code"].(string)
+	if !ok {
+		return "", fmt.Errorf("invalid country code")
+	}
+
+	return countryCode, nil
+}
+
+func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, debug bool) (bool, error) {
+	if debug {
+		log.Println("checking ", host)
+	}
+
+	client, err := createHTTPClient(host, timeout)
 	if err != nil {
 		return false, err
 	}
 
-	resp, err := httpClient.Do(req)
+	resp, body, err := sendHTTPRequest(client, method, checkUrl)
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
 
 	if debug {
 		log.Printf("%s: %v\n%s\n", host, resp.Header, hex.Dump(body))
@@ -130,19 +184,20 @@ func FixURL(v string, proxyType string) string {
 		}
 		//v = u.String() 不会过滤标准端口
 		v = u.Scheme + "://" + u.Hostname()
+		port := u.Port()
 		var defaultPort bool
 		switch u.Scheme {
 		case "http":
-			if u.Port() == "80" {
+			if port == "80" {
 				defaultPort = true
 			}
 		case "https":
-			if u.Port() == "443" {
+			if port == "443" {
 				defaultPort = true
 			}
 		}
-		if !defaultPort {
-			v += ":" + u.Port()
+		if !defaultPort && port != "" {
+			v += ":" + port
 		}
 
 		v += u.Path
@@ -164,6 +219,7 @@ func main() {
 	workers := flag.Int("workers", 20, `workers to run`)
 	size := flag.Int("size", 1000, `workers to run`)
 	debug := flag.Bool("debug", false, `workers to run`)
+	geo := flag.Bool("geo", false, `enable geo check for valid proxies`)
 	flag.Parse()
 
 	timeOutDuration := time.Second * time.Duration(*timeout)
@@ -179,7 +235,17 @@ func main() {
 		ok, err = isProxyHTTP(*method, host, *checkTarget, *expr, timeOutDuration, *debug)
 
 		if err == nil && ok {
-			fmt.Println("\nsuccessful proxy:", host)
+			if *geo {
+				// 获取地理信息
+				countryCode, geoErr := getCountryCode(host, timeOutDuration)
+				if geoErr != nil {
+					fmt.Printf("\nsuccessful proxy: %s, but failed to get country code: %v\n", host, geoErr)
+				} else {
+					fmt.Printf("\nsuccessful proxy: %s, country code: %s\n", host, countryCode)
+				}
+			} else {
+				fmt.Println("\nsuccessful proxy:", host)
+			}
 		} else {
 			fmt.Printf(".")
 			if processed%100 == 0 {

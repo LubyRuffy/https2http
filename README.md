@@ -63,3 +63,25 @@ proxychecker -query 'body="This is a proxy server. Does not respond to non-proxy
 
 proxychecker -query 'body="This is a proxy server. Does not respond to non-proxy requests."' -expr 'response.Body()=~"(?is)GeoNameID"' -target http://ip.bmh.im/h -size 1000 -type http
 ```
+
+## 地理信息查询
+
+proxychecker 支持使用 `-geo` 参数获取有效代理的国家代码：
+
+```shell
+# 使用 geo 参数获取代理的国家代码
+proxychecker -query 'type="subdomain" && cert.is_valid=true && domain!="" && title="ERROR: The requested URL could not be retrieved"' -expr 'response.Header("Server")=="gws"' -target https://www.google.com -size 100 -geo
+```
+
+### 输出示例
+
+```text
+uccessful proxy: http://1.1.1.1:8080, country code: CN
+```
+
+### 功能说明
+
+- 当使用 `-geo` 参数时，proxychecker 会在发现有效代理后，通过该代理访问 `https://api.my-ip.io/v2/ip.json` 获取地理信息
+- 只显示国家代码，格式简洁易读
+- 支持各种类型的代理（http/https/socks5）
+- 可以结合其他参数使用，如 `-type`、`-timeout` 等
