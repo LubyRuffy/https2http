@@ -30,13 +30,16 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/LubyRuffy/gofofa"
 	"github.com/PaesslerAG/gval"
 	"github.com/gammazero/workerpool"
+	"gopkg.in/yaml.v3"
 )
 
 type ResponsePackage struct {
@@ -112,6 +115,177 @@ func (g GeoInfo) IsIPv6() bool {
 		return false
 	}
 	return ip.To4() == nil
+}
+
+// ClashProxy Clash 代理配置
+type ClashProxy struct {
+	Name   string `yaml:"name"`
+	Type   string `yaml:"type"`
+	Server string `yaml:"server"`
+	Port   int    `yaml:"port"`
+	TLS    bool   `yaml:"tls,omitempty"`
+}
+
+// ClashProxyGroup Clash 代理组配置
+type ClashProxyGroup struct {
+	Name    string   `yaml:"name"`
+	Type    string   `yaml:"type"`
+	Proxies []string `yaml:"proxies"`
+}
+
+// ClashConfig Clash 配置文件结构
+type ClashConfig struct {
+	Proxies     []ClashProxy      `yaml:"proxies"`
+	ProxyGroups []ClashProxyGroup `yaml:"proxy-groups"`
+}
+
+// ValidProxy 有效代理信息
+type ValidProxy struct {
+	Host    string
+	GeoInfo *GeoInfo
+}
+
+// ValidProxyCollector 线程安全的代理收集器
+type ValidProxyCollector struct {
+	mu      sync.Mutex
+	proxies []ValidProxy
+}
+
+// Add 添加有效代理
+func (c *ValidProxyCollector) Add(host string, geoInfo *GeoInfo) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.proxies = append(c.proxies, ValidProxy{Host: host, GeoInfo: geoInfo})
+}
+
+// GetAll 获取所有有效代理
+func (c *ValidProxyCollector) GetAll() []ValidProxy {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	result := make([]ValidProxy, len(c.proxies))
+	copy(result, c.proxies)
+	return result
+}
+
+// ParseProxyURL 解析代理URL，返回 server, port, tls, proxyType
+func ParseProxyURL(proxyURL string) (server string, port int, useTLS bool, proxyType string, err error) {
+	u, err := url.Parse(proxyURL)
+	if err != nil {
+		return "", 0, false, "", err
+	}
+
+	server = u.Hostname()
+	portStr := u.Port()
+
+	// 根据 scheme 确定默认端口和 tls
+	switch u.Scheme {
+	case "https":
+		useTLS = true
+		proxyType = "http"
+		if portStr == "" {
+			port = 443
+		}
+	case "http":
+		useTLS = false
+		proxyType = "http"
+		if portStr == "" {
+			port = 80
+		}
+	case "socks5":
+		useTLS = false
+		proxyType = "socks5"
+		if portStr == "" {
+			port = 1080
+		}
+	default:
+		proxyType = "http"
+		if portStr == "" {
+			port = 80
+		}
+	}
+
+	if portStr != "" {
+		var p int
+		_, err = fmt.Sscanf(portStr, "%d", &p)
+		if err != nil {
+			return "", 0, false, "", err
+		}
+		port = p
+	}
+
+	return server, port, useTLS, proxyType, nil
+}
+
+// GenerateProxyName 生成代理名称
+func GenerateProxyName(index int, geoInfo *GeoInfo) string {
+	if geoInfo != nil && geoInfo.Country != "" {
+		ipSuffix := ""
+		if geoInfo.IsIPv6() {
+			ipSuffix = "-v6"
+		}
+		return fmt.Sprintf("%s%s-%d", geoInfo.Country, ipSuffix, index)
+	}
+	return fmt.Sprintf("proxy-%d", index)
+}
+
+// GenerateClashConfig 生成 Clash 配置
+func GenerateClashConfig(proxies []ValidProxy, groupName string) (*ClashConfig, error) {
+	if len(proxies) == 0 {
+		return nil, fmt.Errorf("no valid proxies to generate config")
+	}
+
+	config := &ClashConfig{
+		Proxies:     make([]ClashProxy, 0, len(proxies)),
+		ProxyGroups: make([]ClashProxyGroup, 0, 1),
+	}
+
+	proxyNames := make([]string, 0, len(proxies))
+
+	for i, p := range proxies {
+		server, port, useTLS, proxyType, err := ParseProxyURL(p.Host)
+		if err != nil {
+			continue
+		}
+
+		name := GenerateProxyName(i+1, p.GeoInfo)
+		proxyNames = append(proxyNames, name)
+
+		clashProxy := ClashProxy{
+			Name:   name,
+			Type:   proxyType,
+			Server: server,
+			Port:   port,
+		}
+		if useTLS {
+			clashProxy.TLS = true
+		}
+
+		config.Proxies = append(config.Proxies, clashProxy)
+	}
+
+	// 添加代理组
+	config.ProxyGroups = append(config.ProxyGroups, ClashProxyGroup{
+		Name:    groupName,
+		Type:    "select",
+		Proxies: proxyNames,
+	})
+
+	return config, nil
+}
+
+// SaveClashConfig 保存 Clash 配置到文件
+func SaveClashConfig(config *ClashConfig, filename string) error {
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal clash config: %w", err)
+	}
+
+	err = os.WriteFile(filename, data, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write clash config file: %w", err)
+	}
+
+	return nil
 }
 
 func getGeoInfo(host string, timeout time.Duration) (*GeoInfo, error) {
@@ -229,12 +403,17 @@ func main() {
 	size := flag.Int("size", 1000, `workers to run`)
 	debug := flag.Bool("debug", false, `workers to run`)
 	geo := flag.Bool("geo", false, `enable geo check for valid proxies`)
+	clashFile := flag.String("clash", ``, `output clash config file path (e.g., clash.yaml)`)
+	clashGroup := flag.String("clashGroup", `proxy`, `clash proxy group name`)
 	flag.Parse()
 
 	timeOutDuration := time.Second * time.Duration(*timeout)
 
 	var allsize int64
 	var processed int64
+
+	// 创建代理收集器
+	collector := &ValidProxyCollector{}
 
 	testOne := func(host string) {
 		var ok bool
@@ -244,11 +423,12 @@ func main() {
 		ok, err = isProxyHTTP(*method, host, *checkTarget, *expr, timeOutDuration, *debug)
 
 		if err == nil && ok {
+			var geoInfo *GeoInfo
 			if *geo {
 				// 获取地理信息
-				geoInfo, geoErr := getGeoInfo(host, timeOutDuration)
-				if geoErr != nil {
-					fmt.Printf("\nsuccessful proxy: %s, but failed to get geo info: %v\n", host, geoErr)
+				geoInfo, err = getGeoInfo(host, timeOutDuration)
+				if err != nil {
+					fmt.Printf("\nsuccessful proxy: %s, but failed to get geo info: %v\n", host, err)
 				} else {
 					ipType := ""
 					if geoInfo.IsIPv6() {
@@ -258,6 +438,11 @@ func main() {
 				}
 			} else {
 				fmt.Println("\nsuccessful proxy:", host)
+			}
+
+			// 收集有效代理用于生成 Clash 配置
+			if *clashFile != "" {
+				collector.Add(host, geoInfo)
 			}
 		} else {
 			fmt.Printf(".")
@@ -270,8 +455,24 @@ func main() {
 
 	if len(*testProxy) > 0 {
 		testOne(*testProxy)
-		return
 
+		// 如果指定了 clash 输出文件，生成配置
+		if *clashFile != "" {
+			proxies := collector.GetAll()
+			if len(proxies) > 0 {
+				config, err := GenerateClashConfig(proxies, *clashGroup)
+				if err != nil {
+					log.Printf("Failed to generate clash config: %v\n", err)
+				} else {
+					if err := SaveClashConfig(config, *clashFile); err != nil {
+						log.Printf("Failed to save clash config: %v\n", err)
+					} else {
+						fmt.Printf("\nClash config saved to %s with %d proxies\n", *clashFile, len(proxies))
+					}
+				}
+			}
+		}
+		return
 	}
 
 	fofa, err := gofofa.NewClient()
@@ -302,4 +503,22 @@ func main() {
 	}
 	wp.StopWait()
 
+	// 生成 Clash 配置文件
+	if *clashFile != "" {
+		proxies := collector.GetAll()
+		if len(proxies) > 0 {
+			config, err := GenerateClashConfig(proxies, *clashGroup)
+			if err != nil {
+				log.Printf("Failed to generate clash config: %v\n", err)
+			} else {
+				if err := SaveClashConfig(config, *clashFile); err != nil {
+					log.Printf("Failed to save clash config: %v\n", err)
+				} else {
+					fmt.Printf("\nClash config saved to %s with %d proxies\n", *clashFile, len(proxies))
+				}
+			}
+		} else {
+			fmt.Println("\nNo valid proxies found, clash config not generated")
+		}
+	}
 }

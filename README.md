@@ -76,12 +76,59 @@ proxychecker -query 'type="subdomain" && cert.is_valid=true && domain!="" && tit
 ### 输出示例
 
 ```text
-uccessful proxy: http://1.1.1.1:8080, country code: CN
+successful proxy: http://1.1.1.1:8080, country: CN, ip: 1.2.3.4
 ```
 
 ### 功能说明
 
-- 当使用 `-geo` 参数时，proxychecker 会在发现有效代理后，通过该代理访问 `https://api.my-ip.io/v2/ip.json` 获取地理信息
-- 只显示国家代码，格式简洁易读
+- 当使用 `-geo` 参数时，proxychecker 会在发现有效代理后，通过该代理访问 `http://ip.bmh.im/c` 获取地理信息
+- 显示国家代码和出口 IP，格式简洁易读
 - 支持各种类型的代理（http/https/socks5）
 - 可以结合其他参数使用，如 `-type`、`-timeout` 等
+
+## 生成 Clash 配置文件
+
+proxychecker 支持使用 `-clash` 参数自动生成 Clash 配置文件：
+
+```shell
+# 检测代理并生成 Clash 配置
+proxychecker -query 'port="3128"' -expr 'response.Body()=~"(?is)百度"' -target https://www.baidu.com -size 100 -clash clash.yaml
+
+# 结合地理信息，代理名称会包含国家代码
+proxychecker -query 'port="3128"' -expr 'response.Body()=~"(?is)百度"' -target https://www.baidu.com -size 100 -geo -clash clash.yaml
+
+# 自定义代理组名称
+proxychecker -query 'port="3128"' -expr 'response.Body()=~"(?is)百度"' -target https://www.baidu.com -size 100 -clash clash.yaml -clashGroup "my-proxies"
+```
+
+### 生成的配置示例
+
+```yaml
+proxies:
+  - name: US-1
+    type: http
+    server: proxy1.example.com
+    port: 443
+    tls: true
+  - name: JP-v6-2
+    type: http
+    server: proxy2.example.com
+    port: 8080
+proxy-groups:
+  - name: proxy
+    type: select
+    proxies:
+      - US-1
+      - JP-v6-2
+```
+
+### 功能说明
+
+- 使用 `-clash` 参数指定输出文件路径
+- 使用 `-clashGroup` 参数自定义代理组名称（默认为 `proxy`）
+- 代理命名规则：
+  - 启用 `-geo` 时：`国家代码-序号`（如 `US-1`），IPv6 代理为 `国家代码-v6-序号`
+  - 未启用 `-geo` 时：`proxy-序号`
+- 自动识别代理类型（http/socks5）和 TLS 设置
+
+更多详细说明请参考 [docs/proxychecker.md](docs/proxychecker.md)
