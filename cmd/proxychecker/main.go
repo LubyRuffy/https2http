@@ -99,34 +99,43 @@ func sendHTTPRequest(client *http.Client, method, url string) (*http.Response, [
 	return resp, body, nil
 }
 
-func getCountryCode(host string, timeout time.Duration) (string, error) {
+// GeoInfo 地理位置信息
+type GeoInfo struct {
+	Country string `json:"country"`
+	IP      string `json:"ip"`
+}
+
+// IsIPv6 判断是否为 IPv6 地址
+func (g GeoInfo) IsIPv6() bool {
+	ip := net.ParseIP(g.IP)
+	if ip == nil {
+		return false
+	}
+	return ip.To4() == nil
+}
+
+func getGeoInfo(host string, timeout time.Duration) (*GeoInfo, error) {
 	client, err := createHTTPClient(host, timeout)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	_, body, err := sendHTTPRequest(client, "GET", "https://api.my-ip.io/v2/ip.json")
+	_, body, err := sendHTTPRequest(client, "GET", "http://ip.bmh.im/c")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	// 解析JSON获取country.code
-	var ipInfo map[string]interface{}
-	if err := json.Unmarshal(body, &ipInfo); err != nil {
-		return "", err
+	// 解析JSON获取country和ip
+	var geoInfo GeoInfo
+	if err := json.Unmarshal(body, &geoInfo); err != nil {
+		return nil, err
 	}
 
-	country, ok := ipInfo["country"].(map[string]interface{})
-	if !ok {
-		return "", fmt.Errorf("invalid country info")
+	if geoInfo.Country == "" {
+		return nil, fmt.Errorf("invalid country info")
 	}
 
-	countryCode, ok := country["code"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid country code")
-	}
-
-	return countryCode, nil
+	return &geoInfo, nil
 }
 
 func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, debug bool) (bool, error) {
@@ -237,11 +246,15 @@ func main() {
 		if err == nil && ok {
 			if *geo {
 				// 获取地理信息
-				countryCode, geoErr := getCountryCode(host, timeOutDuration)
+				geoInfo, geoErr := getGeoInfo(host, timeOutDuration)
 				if geoErr != nil {
-					fmt.Printf("\nsuccessful proxy: %s, but failed to get country code: %v\n", host, geoErr)
+					fmt.Printf("\nsuccessful proxy: %s, but failed to get geo info: %v\n", host, geoErr)
 				} else {
-					fmt.Printf("\nsuccessful proxy: %s, country code: %s\n", host, countryCode)
+					ipType := ""
+					if geoInfo.IsIPv6() {
+						ipType = " [IPv6]"
+					}
+					fmt.Printf("\nsuccessful proxy: %s, country: %s, ip: %s%s\n", host, geoInfo.Country, geoInfo.IP, ipType)
 				}
 			} else {
 				fmt.Println("\nsuccessful proxy:", host)
