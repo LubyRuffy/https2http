@@ -438,19 +438,22 @@ func main() {
 				geoInfo, err = getGeoInfo(host, timeOutDuration)
 				if err != nil {
 					slog.Info("successful proxy but failed to get geo info",
+						"found", true,
 						"host", host,
 						"error", err.Error())
 				} else {
 					slog.Info("successful proxy",
+						"found", true,
 						"host", host,
 						"country", geoInfo.Country,
 						"ip", geoInfo.IP,
 						"ipv6", geoInfo.IsIPv6())
 				}
 			} else {
-				slog.Info("successful proxy", "host", host)
+				slog.Info("successful proxy",
+					"found", true,
+					"host", host)
 			}
-
 			// 收集有效代理用于生成 Clash 配置
 			if *clashFile != "" {
 				collector.Add(host, geoInfo)
