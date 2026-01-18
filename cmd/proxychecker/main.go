@@ -26,7 +26,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -313,9 +313,7 @@ func getGeoInfo(host string, timeout time.Duration) (*GeoInfo, error) {
 }
 
 func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, debug bool) (bool, error) {
-	if debug {
-		log.Println("checking ", host)
-	}
+	slog.Debug("checking proxy", "host", host)
 
 	client, err := createHTTPClient(host, timeout)
 	if err != nil {
@@ -328,7 +326,7 @@ func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, deb
 	}
 
 	if debug {
-		log.Printf("%s: %v\n%s\n", host, resp.Header, hex.Dump(body))
+		slog.Debug("proxy response", "host", host, "headers", resp.Header, "body", hex.Dump(body))
 	}
 
 	value, err := gval.Evaluate(expr,
@@ -407,7 +405,18 @@ func main() {
 	clashGroup := flag.String("clashGroup", `proxy`, `clash proxy group name`)
 	flag.Parse()
 
+	// 设置 slog 为 JSON 格式
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}
+	if *debug {
+		opts.Level = slog.LevelDebug
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	slog.SetDefault(logger)
+
 	timeOutDuration := time.Second * time.Duration(*timeout)
+	lastUpdateLog := time.Now()
 
 	var allsize int64
 	var processed int64
@@ -428,16 +437,18 @@ func main() {
 				// 获取地理信息
 				geoInfo, err = getGeoInfo(host, timeOutDuration)
 				if err != nil {
-					fmt.Printf("\nsuccessful proxy: %s, but failed to get geo info: %v\n", host, err)
+					slog.Info("successful proxy but failed to get geo info",
+						"host", host,
+						"error", err.Error())
 				} else {
-					ipType := ""
-					if geoInfo.IsIPv6() {
-						ipType = " [IPv6]"
-					}
-					fmt.Printf("\nsuccessful proxy: %s, country: %s, ip: %s%s\n", host, geoInfo.Country, geoInfo.IP, ipType)
+					slog.Info("successful proxy",
+						"host", host,
+						"country", geoInfo.Country,
+						"ip", geoInfo.IP,
+						"ipv6", geoInfo.IsIPv6())
 				}
 			} else {
-				fmt.Println("\nsuccessful proxy:", host)
+				slog.Info("successful proxy", "host", host)
 			}
 
 			// 收集有效代理用于生成 Clash 配置
@@ -445,11 +456,12 @@ func main() {
 				collector.Add(host, geoInfo)
 			}
 		} else {
-			fmt.Printf(".")
-			if processed%100 == 0 {
-				fmt.Printf("      %d/%d \r", processed, allsize)
-			}
-			//log.Println("not proxy:", host)
+			slog.Debug("proxy check failed", "host", host, "error", err)
+		}
+
+		if processed%100 == 0 || time.Since(lastUpdateLog) > time.Second*5 {
+			slog.Info("progress", "processed", processed, "total", allsize)
+			lastUpdateLog = time.Now()
 		}
 	}
 
@@ -462,12 +474,14 @@ func main() {
 			if len(proxies) > 0 {
 				config, err := GenerateClashConfig(proxies, *clashGroup)
 				if err != nil {
-					log.Printf("Failed to generate clash config: %v\n", err)
+					slog.Error("Failed to generate clash config", "error", err.Error())
 				} else {
 					if err := SaveClashConfig(config, *clashFile); err != nil {
-						log.Printf("Failed to save clash config: %v\n", err)
+						slog.Error("Failed to save clash config", "error", err.Error())
 					} else {
-						fmt.Printf("\nClash config saved to %s with %d proxies\n", *clashFile, len(proxies))
+						slog.Info("Clash config saved",
+							"file", *clashFile,
+							"proxy_count", len(proxies))
 					}
 				}
 			}
@@ -509,16 +523,18 @@ func main() {
 		if len(proxies) > 0 {
 			config, err := GenerateClashConfig(proxies, *clashGroup)
 			if err != nil {
-				log.Printf("Failed to generate clash config: %v\n", err)
+				slog.Error("Failed to generate clash config", "error", err.Error())
 			} else {
 				if err := SaveClashConfig(config, *clashFile); err != nil {
-					log.Printf("Failed to save clash config: %v\n", err)
+					slog.Error("Failed to save clash config", "error", err.Error())
 				} else {
-					fmt.Printf("\nClash config saved to %s with %d proxies\n", *clashFile, len(proxies))
+					slog.Info("Clash config saved",
+						"file", *clashFile,
+						"proxy_count", len(proxies))
 				}
 			}
 		} else {
-			fmt.Println("\nNo valid proxies found, clash config not generated")
+			slog.Info("No valid proxies found, clash config not generated")
 		}
 	}
 }
