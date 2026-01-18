@@ -28,10 +28,12 @@ ProxyChecker 是一个用于检测和验证代理服务器的命令行工具。
 	      并发工作线程数 (默认值: 20)
 	-size int
 	      FOFA 搜索结果数量 (默认值: 1000)
-	-debug
-	      启用调试模式 (默认值: false)
-	-geo
-	      获取有效代理的地理位置信息 (默认值: false)
+  -debug
+        启用调试模式 (默认值: false)
+  -showNotProxy
+        显示无效代理信息 (默认值: false)
+  -geo
+        获取有效代理的地理位置信息 (默认值: false)
 	-clash string
 	      输出 Clash 配置文件路径（如：clash.yaml）
 	-clashGroup string
@@ -68,8 +70,8 @@ ProxyChecker 是一个用于检测和验证代理服务器的命令行工具。
  6. Clash 配置文件保存失败：
     {"time":"2026-01-18T21:13:15.534572+08:00","level":"ERROR","msg":"Failed to save clash config","error":"..."}
 
- 7. 代理检测失败（仅在 debug 模式显示）：
-    {"time":"2026-01-18T21:13:11.534572+08:00","level":"DEBUG","msg":"proxy check failed","host":"...","error":"..."}
+7. 代理检测失败（启用 -showNotProxy 或 debug 模式时显示）：
+   {"time":"2026-01-18T21:13:11.534572+08:00","level":"INFO","msg":"invalid proxy","host":"...","error":"..."}
 
 === 使用示例 ===
 
@@ -88,8 +90,11 @@ ProxyChecker 是一个用于检测和验证代理服务器的命令行工具。
  5. 生成 Clash 配置文件：
     go run ./cmd/proxychecker -query 'port="3128"' -expr 'response.Body()=~"(?is)百度"' -target https://www.baidu.com -size 100 -geo -clash clash.yaml -clashGroup "my-proxies"
 
- 6. 调试模式（显示详细响应信息）：
-    go run ./cmd/proxychecker -query 'port="3128"' -expr 'response.Header("Server")=="gws"' -target https://www.google.com -size 10 -debug
+6. 显示无效代理信息：
+   go run ./cmd/proxychecker -query 'port="3128"' -expr 'response.Header("Server")=="gws"' -target https://www.google.com -size 10 -showNotProxy
+
+7. 调试模式（显示详细响应信息）：
+   go run ./cmd/proxychecker -query 'port="3128"' -expr 'response.Header("Server")=="gws"' -target https://www.google.com -size 10 -debug
 
 === 表达式说明 ===
 
@@ -510,6 +515,7 @@ func main() {
 	workers := flag.Int("workers", 20, `workers to run`)
 	size := flag.Int("size", 1000, `workers to run`)
 	debug := flag.Bool("debug", false, `workers to run`)
+	showNotProxy := flag.Bool("showNotProxy", false, `show invalid proxy info`)
 	geo := flag.Bool("geo", false, `enable geo check for valid proxies`)
 	clashFile := flag.String("clash", ``, `output clash config file path (e.g., clash.yaml)`)
 	clashGroup := flag.String("clashGroup", `proxy`, `clash proxy group name`)
@@ -569,7 +575,12 @@ func main() {
 				collector.Add(host, geoInfo)
 			}
 		} else {
-			slog.Debug("proxy check failed", "host", host, "error", err)
+			// 如果 showNotProxy 为 true，即使不是 debug 模式也打印无效代理信息
+			if *showNotProxy {
+				slog.Info("invalid proxy", "host", host, "error", err)
+			} else {
+				slog.Debug("proxy check failed", "host", host, "error", err)
+			}
 		}
 
 		if processed%100 == 0 || time.Since(lastUpdateLog) > time.Second*5 {
