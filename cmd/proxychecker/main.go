@@ -1,6 +1,119 @@
-// 检查cert.is_valid=true && type="subdomain" && title="ERROR: The requested URL could not be retrieved" && domain!="" && body="Some aspect of the requested URL is incorrect"
 /*
+ProxyChecker 是一个用于检测和验证代理服务器的命令行工具。
+它可以从 FOFA 搜索引擎获取代理列表，并验证这些代理是否能够正常工作。
+
+=== 使用说明 ===
+
+基本用法：
+
+	go run ./cmd/proxychecker
+
+参数说明：
+
+	-query string
+	      FOFA 查询语句 (默认值: type="subdomain" && cert.is_valid=true && domain!="" && title="ERROR: The requested URL could not be retrieved")
+	-expr string
+	      验证代理的表达式 (默认值: response.Header("Server")=="gws")
+	-target string
+	      用于测试代理的目标 URL (默认值: https://www.google.com)
+	-testProxy string
+	      直接测试单个代理（不使用 FOFA 搜索）
+	-method string
+	      HTTP 请求方法 (默认值: GET)
+	-type string
+	      代理类型：socks5/http/https/auto (默认值: auto)
+	-timeout int
+	      请求超时时间（秒） (默认值: 10)
+	-workers int
+	      并发工作线程数 (默认值: 20)
+	-size int
+	      FOFA 搜索结果数量 (默认值: 1000)
+	-debug
+	      启用调试模式 (默认值: false)
+	-geo
+	      获取有效代理的地理位置信息 (默认值: false)
+	-clash string
+	      输出 Clash 配置文件路径（如：clash.yaml）
+	-clashGroup string
+	      Clash 代理组名称 (默认值: proxy)
+
+=== 返回格式说明 ===
+
+程序使用 JSON 格式的日志输出，包含以下几种消息类型：
+
+ 1. 进度信息（定期输出）：
+    {"time":"2026-01-18T21:13:03.452157+08:00","level":"INFO","msg":"progress","processed":353,"total":1000}
+    - processed: 已处理的代理数量
+    - total: 总代理数量
+
+ 2. 发现有效代理（未启用 -geo）：
+    {"time":"2026-01-18T21:13:11.534572+08:00","level":"INFO","msg":"successful proxy","found":true,"host":"https://bulion11356.ru"}
+    - host: 代理地址
+
+ 3. 发现有效代理（启用 -geo）：
+    {"time":"2026-01-18T21:13:11.534572+08:00","level":"INFO","msg":"successful proxy","found":true,"host":"https://bulion11356.ru","country":"US","ip":"1.2.3.4","ipv6":false}
+    - host: 代理地址
+    - country: 国家代码（如 US, CN, JP 等）
+    - ip: 出口 IP 地址
+    - ipv6: 是否为 IPv6 地址
+
+ 4. 代理有效但获取地理信息失败（启用 -geo）：
+    {"time":"2026-01-18T21:13:11.534572+08:00","level":"INFO","msg":"successful proxy but failed to get geo info","found":true,"host":"https://bulion11356.ru","error":"timeout"}
+
+ 5. Clash 配置文件保存成功：
+    {"time":"2026-01-18T21:13:15.534572+08:00","level":"INFO","msg":"Clash config saved","file":"clash.yaml","proxy_count":5}
+    - file: 配置文件路径
+    - proxy_count: 有效代理数量
+
+ 6. Clash 配置文件保存失败：
+    {"time":"2026-01-18T21:13:15.534572+08:00","level":"ERROR","msg":"Failed to save clash config","error":"..."}
+
+ 7. 代理检测失败（仅在 debug 模式显示）：
+    {"time":"2026-01-18T21:13:11.534572+08:00","level":"DEBUG","msg":"proxy check failed","host":"...","error":"..."}
+
+=== 使用示例 ===
+
+ 1. 基本用法（检测 Google 前置代理）：
+    go run ./cmd/proxychecker -query 'type="subdomain" && cert.is_valid=true && domain!="" && title="ERROR: The requested URL could not be retrieved"' -expr 'response.Header("Server")=="gws"' -target https://www.google.com -size 100
+
+ 2. 检测百度代理：
+    go run ./cmd/proxychecker -query 'port="3128"' -expr 'response.Header("Server")=~"(?is)(nginx)"' -target https://www.baidu.com -size 100
+
+ 3. 启用地理信息查询：
+    go run ./cmd/proxychecker -query 'port="3128"' -expr 'response.Body()=~"(?is)百度"' -target https://www.baidu.com -size 100 -geo
+
+ 4. 测试单个代理：
+    go run ./cmd/proxychecker -testProxy https://proxy.example.com:443 -expr 'response.Header("Server")=="gws"' -target https://www.google.com
+
+ 5. 生成 Clash 配置文件：
+    go run ./cmd/proxychecker -query 'port="3128"' -expr 'response.Body()=~"(?is)百度"' -target https://www.baidu.com -size 100 -geo -clash clash.yaml -clashGroup "my-proxies"
+
+ 6. 调试模式（显示详细响应信息）：
+    go run ./cmd/proxychecker -query 'port="3128"' -expr 'response.Header("Server")=="gws"' -target https://www.google.com -size 10 -debug
+
+=== 表达式说明 ===
+
+可用的表达式变量和函数：
+- response.Header("key"): 获取 HTTP 响应头
+- response.Body(): 获取响应体内容
+
+表达式示例：
+- response.Header("Server")=="gws"
+- response.Body()=~"(?is)百度"
+- response.Header("Content-Type")=="text/html"
+
+=== 注意事项 ===
+
+1. 需要配置 FOFA API 密钥（通过环境变量或配置文件）
+2. 使用 -geo 参数会增加请求时间，因为需要额外访问地理信息查询接口
+3. -clash 参数只在找到有效代理时才会生成配置文件
+4. 日志输出为 JSON 格式，适合程序化处理
+
+---
+
+关于 gval 不支持 http.Response.Header.Get 的说明：
 gval 不支持http.Response.Header.Get，因为Header作为reflect.Map进行了处理，所以，要单独进行一个封装
+
 	gval.reflectSelect (evaluable.go:160) github.com/PaesslerAG/gval
 	gval.variable.func1 (evaluable.go:144) github.com/PaesslerAG/gval
 	gval.(*Parser).callEvaluable.func1 (evaluable.go:225) github.com/PaesslerAG/gval
@@ -15,7 +128,6 @@ gval 不支持http.Response.Header.Get，因为Header作为reflect.Map进行了�
 	runtime.goexit (asm_amd64.s:1571) runtime
 	 - Async Stack Trace
 	<autogenerated>:2
-
 */
 package main
 
@@ -325,9 +437,7 @@ func isProxyHTTP(method, host, checkUrl, expr string, timeout time.Duration, deb
 		return false, err
 	}
 
-	if debug {
-		slog.Debug("proxy response", "host", host, "headers", resp.Header, "body", hex.Dump(body))
-	}
+	slog.Debug("proxy response", "host", host, "headers", resp.Header, "body", hex.Dump(body))
 
 	value, err := gval.Evaluate(expr,
 		map[string]interface{}{
