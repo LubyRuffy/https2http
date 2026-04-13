@@ -75,3 +75,8 @@ snapshot:
 
 changelog:
   disable: true
+
+release:
+  github:
+    owner: LubyRuffy
+    name: https2http
