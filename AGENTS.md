@@ -34,3 +34,4 @@ go test ./...
 
 - Go 工具链版本以 `go.mod` 的 `go` 指令为准。
 - 变更行为或发布方式时同步更新 `README.md`、`CHANGELOG.md` 与本文件。
+
