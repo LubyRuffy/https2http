@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- GoReleaser 构建增加 `-buildvcs=false`；在 `AGENTS.md` 补充预编译体积与可选优化说明。
+
 ## [v0.1.0] - 2026-04-13
 
 ### Added
