@@ -28,7 +28,7 @@ func main() {
 		Proxy:           http.ProxyURL(proxyURL),
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	//proxy.ConnectDial = proxy.NewConnectDialToProxy(*upstreamProxy)
+	proxy.ConnectDial = proxy.NewConnectDialToProxy(*upstreamProxy)
 
 	//proxy.OnRequest().DoFunc(
 	//	func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
