@@ -20,6 +20,22 @@ app <-> proxy(Proxifier) <-> https2http <-> https proxy
 https2http -proxy https://proxy.xxx.com -addr :8080
 ```
 
+## 预编译二进制
+
+使用 [GoReleaser](https://goreleaser.com) 为以下平台生成发布包（每个压缩包内同时包含 `https2http` 与 `proxychecker`）：
+
+- macOS（Apple Silicon，arm64）
+- Linux（x86_64，amd64）
+- Windows（x86_64，amd64）
+
+本地生成快照包（无需 git tag、不上传远端）：
+
+```shell
+goreleaser release --snapshot --clean --skip=publish
+```
+
+正式发版：创建并推送语义化版本 tag 后，在已配置发布凭据的环境执行 `goreleaser release`（详见 `AGENTS.md`）。构建矩阵与打包规则见仓库根目录的 `.goreleaser.yaml`。
+
 直接用gost也可以：
 
 ```shell
